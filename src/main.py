@@ -10,6 +10,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("WebKit", "6.0")
@@ -150,7 +151,6 @@ def get_library_folder():
 
 
 def set_library_folder(path):
-    """Record the folder the user chose via the portal folder chooser."""
     global LIBRARY_FOLDER
     LIBRARY_FOLDER = path
     schedule_state_save()
@@ -562,7 +562,8 @@ class KiwixLibraryDialog(Adw.Dialog):
                 progress_bar.set_visible(True)
                 progress_bar.set_fraction(0.0)
                 progress_bar.set_text("Connecting…")
-                pulse_state = {"source_id": GLib.timeout_add(100, lambda: progress_bar.pulse() is None)}
+
+                pulse_state = {"source_id": GLib.timeout_add(100, lambda: progress_bar.pulse())}
 
                 def stop_connecting_pulse():
                     if pulse_state["source_id"] is not None:
@@ -592,7 +593,6 @@ class KiwixLibraryDialog(Adw.Dialog):
                         progress_bar.set_text("Failed — click to retry")
                         download_btn.set_sensitive(True)
                         download_btn.set_tooltip_text(f"Download failed: {message}")
-                        print(f"Download failed for {url}: {message}")
                         self._show_error_popup(
                             "Download Failed",
                             f"Couldn't download \"{entry.get('title', 'this file')}\".\n\n{message}",
@@ -672,8 +672,6 @@ class KiwixLibraryDialog(Adw.Dialog):
                     start_download(url, Path(folder) / suggested_name)
                     return
 
-                # No ZIMs folder chosen yet — ask for one via the portal, then
-                # remember it and download straight into it from now on.
                 folder_dialog = Gtk.FileDialog()
                 folder_dialog.set_title("Choose a ZIMs Folder")
                 folder_dialog.select_folder(self.get_root(), None, on_folder_chosen_for_download)
@@ -790,37 +788,21 @@ def get_full_zim_details(path):
             except Exception:
                 return None
 
-        title = read_meta("Title")
-        if title:
-            details["title"] = title
-
-        date = read_meta("Date")
-        if date:
-            details["date"] = date
+        for key, field_key in [
+            ("Title", "title"), ("Date", "date"), ("Description", "desc"),
+            ("Creator", "creator"), ("Publisher", "publisher"), ("Name", "name")
+        ]:
+            val = read_meta(key)
+            if val:
+                details[field_key if field_key != "desc" else "description"] = val
 
         lang = read_meta("Language") or read_meta("lang")
         if lang:
             details["lang"] = lang
 
-        desc = read_meta("Description")
-        if desc:
-            details["description"] = desc
-
-        creator = read_meta("Creator")
-        if creator:
-            details["creator"] = creator
-
-        publisher = read_meta("Publisher")
-        if publisher:
-            details["publisher"] = publisher
-
         tags = read_meta("Tags") or read_meta("Keywords")
         if tags:
             details["tags"] = tags.replace(";", " • ")
-
-        name = read_meta("Name")
-        if name:
-            details["name"] = name
 
         try:
             illustration = archive.get_illustration_item(48)
@@ -854,11 +836,7 @@ def handle_zim_uri_scheme(request):
         return
 
     try:
-        if entry_path:
-            entry = archive.get_entry_by_path(entry_path)
-        else:
-            entry = archive.main_entry
-
+        entry = archive.get_entry_by_path(entry_path) if entry_path else archive.main_entry
         item = entry.get_item()
         content = bytes(item.content)
         mime_type = item.mimetype
@@ -912,13 +890,6 @@ def _collect_zim_file_info(full_path):
 
 
 def scan_library_folder(callback):
-    """List the .zim files inside the user's chosen ZIMs folder.
-
-    The folder itself was only ever set via the portal folder chooser
-    (Gtk.FileDialog.select_folder) — we never ask the user for a directory
-    to scan on our own, and we never touch anywhere else on disk.
-    """
-
     def worker():
         results = []
         folder = get_library_folder()
@@ -1048,7 +1019,6 @@ class HomePageView(Gtk.ScrolledWindow):
             return
 
         set_library_folder(path)
-        # Auto-reload right after the folder is selected.
         self._refresh_folder_state()
 
     def _load_library(self):
@@ -1173,14 +1143,9 @@ class HomePageView(Gtk.ScrolledWindow):
             content_grid.attach(widget, 1, row_idx, 1, 1)
             row_idx += 1
 
-        if details["gicon"]:
-            icon_img = Gtk.Image.new_from_gicon(details["gicon"])
-            icon_img.set_pixel_size(48)
-            add_detail_row("Favicon", icon_img)
-        else:
-            icon_img = Gtk.Image.new_from_icon_name("book-open-symbolic")
-            icon_img.set_pixel_size(48)
-            add_detail_row("Favicon", icon_img)
+        icon_img = Gtk.Image.new_from_gicon(details["gicon"]) if details["gicon"] else Gtk.Image.new_from_icon_name("book-open-symbolic")
+        icon_img.set_pixel_size(48)
+        add_detail_row("Favicon", icon_img)
 
         title_label = Gtk.Label(label=details["title"], wrap=True, max_width_chars=35)
         title_label.set_xalign(0)
@@ -1224,8 +1189,6 @@ class HomePageView(Gtk.ScrolledWindow):
 
     def _on_remote_row_activated(self, row):
         dialog = KiwixLibraryDialog()
-        # Auto-reload the library once the user closes the catalog dialog,
-        # so anything they downloaded shows up immediately back on Home.
         dialog.connect("closed", lambda d: self._refresh_folder_state())
         dialog.present(self.get_root())
 
@@ -1327,13 +1290,11 @@ class ZimPageView(Gtk.Overlay):
             self.find_controller.search_finish()
 
     def find_next(self):
-        text = self.search_entry.get_text()
-        if text:
+        if self.search_entry.get_text():
             self.find_controller.search_next()
 
     def find_previous(self):
-        text = self.search_entry.get_text()
-        if text:
+        if self.search_entry.get_text():
             self.find_controller.search_previous()
 
     def _on_context_menu(self, webview, context_menu, hit_test_result):
@@ -1366,12 +1327,7 @@ class ZimPageView(Gtk.Overlay):
             item_copy = WebKit.ContextMenuItem.new_from_gaction(
                 Gio.SimpleAction.new("copy-link", None), "Copy Link Location", None
             )
-
-            def copy_uri(*_):
-                clipboard = self.get_clipboard()
-                clipboard.set(uri)
-
-            item_copy.get_gaction().connect("activate", copy_uri)
+            item_copy.get_gaction().connect("activate", lambda *_: self.get_clipboard().set(uri))
             context_menu.append(item_copy)
             return False
         return False
@@ -1414,9 +1370,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         title_widget = Adw.WindowTitle(title="Web Archives")
         header_bar.set_title_widget(title_widget)
 
-        self.home_button = Gtk.Button(
-            icon_name="go-home-symbolic", tooltip_text="Home"
-        )
+        self.home_button = Gtk.Button(icon_name="go-home-symbolic", tooltip_text="Home")
         self.home_button.connect("clicked", self.on_home_clicked)
         header_bar.pack_start(self.home_button)
 
@@ -1430,9 +1384,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.forward_button.connect("clicked", self.on_forward_clicked)
         header_bar.pack_start(self.forward_button)
 
-        new_tab_button = Gtk.Button(
-            icon_name="tab-new-symbolic", tooltip_text="New Tab"
-        )
+        new_tab_button = Gtk.Button(icon_name="tab-new-symbolic", tooltip_text="New Tab")
         new_tab_button.connect("clicked", self.on_new_tab_clicked)
         header_bar.pack_start(new_tab_button)
 
@@ -1500,8 +1452,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         popover_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
         btn_find_in_page = Gtk.Button(label="Find in page...", has_frame=False)
-        if btn_find_in_page.get_child() and isinstance(btn_find_in_page.get_child(), Gtk.Label):
-            btn_find_in_page.get_child().set_xalign(0)
         btn_find_in_page.connect(
             "clicked",
             lambda *_: (
@@ -1511,8 +1461,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         )
 
         btn_print = Gtk.Button(label="Print", has_frame=False)
-        if btn_print.get_child() and isinstance(btn_print.get_child(), Gtk.Label):
-            btn_print.get_child().set_xalign(0)
         btn_print.connect(
             "clicked", lambda *_: (self.zim_popover.popdown(), self.on_print_page(None, None))
         )
@@ -1522,8 +1470,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         popover_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
         btn_main = Gtk.Button(label="Main page", has_frame=False)
-        if btn_main.get_child() and isinstance(btn_main.get_child(), Gtk.Label):
-            btn_main.get_child().set_xalign(0)
         btn_main.connect(
             "clicked", lambda *_: (self.zim_popover.popdown(), self.on_go_main_page(None, None))
         )
@@ -1602,10 +1548,8 @@ class WebArchivesWindow(Adw.ApplicationWindow):
 
         current_zim_page = self._current_zim_page()
         if not new_tab and current_zim_page and current_zim_page.zim_path == zim_path:
-            if target_uri:
-                current_zim_page.webview.load_uri(target_uri)
-            else:
-                current_zim_page.webview.load_uri(f"zim://{current_zim_page.archive_id}/")
+            load_uri = target_uri if target_uri else f"zim://{current_zim_page.archive_id}/"
+            current_zim_page.webview.load_uri(load_uri)
             return
 
         zim_page = ZimPageView(zim_path, window_ref=self, target_uri=target_uri)
@@ -1676,7 +1620,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
                 group.remove(row)
             refresh_visibility()
 
-        def add_row(uri, page_title):
+        for uri, page_title in get_history(zim_path):
             row = Adw.ActionRow(title=page_title)
             row.add_prefix(Gtk.Image.new_from_icon_name("document-open-recent-symbolic"))
             row.set_activatable(True)
@@ -1698,19 +1642,14 @@ class WebArchivesWindow(Adw.ApplicationWindow):
             group.add(row)
             row_map[uri] = row
 
-        for uri, page_title in get_history(zim_path):
-            add_row(uri, page_title)
-
         refresh_visibility()
 
-        def on_clear_clicked(btn):
-            clear_history(zim_path)
-            for row in list(row_map.values()):
-                group.remove(row)
-            row_map.clear()
+        clear_btn.connect("clicked", lambda _: (
+            clear_history(zim_path),
+            [group.remove(r) for r in list(row_map.values())],
+            row_map.clear(),
             refresh_visibility()
-
-        clear_btn.connect("clicked", on_clear_clicked)
+        ))
 
         toolbar_view.set_content(stack)
         dialog.set_child(toolbar_view)
@@ -1855,7 +1794,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         results_scroll.set_child(results_clamp)
 
         stack.add_named(results_scroll, "results")
-
         stack.set_visible_child_name("prompt")
         result_rows = []
 
@@ -1942,8 +1880,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
             zim_page.initial_load_done = True
             uri = webview.get_uri()
             if uri:
-                title = webview.get_title() or uri
-                add_history_entry(zim_page.zim_path, uri, title)
+                add_history_entry(zim_page.zim_path, uri, webview.get_title() or uri)
 
     def _prompt_external_browser(self, target_uri):
         dialog = Adw.MessageDialog(
@@ -2116,10 +2053,8 @@ class WebArchivesWindow(Adw.ApplicationWindow):
 
     def on_print_page(self, action, param):
         webview = self._current_webview()
-        if webview is None:
-            return
-        print_operation = WebKit.PrintOperation.new(webview)
-        print_operation.run_dialog(self)
+        if webview is not None:
+            WebKit.PrintOperation.new(webview).run_dialog(self)
 
     def on_go_main_page(self, action, param):
         zim_page = self._current_zim_page()
