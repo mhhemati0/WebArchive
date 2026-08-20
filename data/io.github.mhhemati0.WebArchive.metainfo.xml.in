@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.mhdev_89.WebArchive</id>
+  <id>io.github.mhhemati0.WebArchive</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
 
@@ -20,29 +20,29 @@
     </p>
   </description>
 
-  <developer id="io.github.mhdev-89">
-    <name>mhdev-89</name>
+  <developer id="io.github.mhhemati0">
+    <name>mhhemati0</name>
   </developer>
 
-  <url type="homepage">https://github.com/mhdev-89/WebArchive</url>
-  <url type="bugtracker">https://github.com/mhdev-89/WebArchive/issues</url>
+  <url type="homepage">https://github.com/mhhemati0/WebArchive</url>
+  <url type="bugtracker">https://github.com/mhhemati0/WebArchive/issues</url>
 
   <translation type="gettext">webarchive</translation>
-  <launchable type="desktop-id">io.github.mhdev_89.WebArchive.desktop</launchable>
+  <launchable type="desktop-id">io.github.mhhemati0.WebArchive.desktop</launchable>
   <content_rating type="oars-1.1" />
 
   <screenshots>
     <screenshot type="default">
       <caption>Browsing ZIM archives</caption>
-      <image>https://raw.githubusercontent.com/mhdev-89/WebArchive/main/data/screenshots/img1.png</image>
+      <image>https://raw.githubusercontent.com/mhhemati0/WebArchive/main/data/screenshots/img1.png</image>
     </screenshot>
     <screenshot type="default">
       <caption>Browsing the Kiwix Library</caption>
-      <image>https://raw.githubusercontent.com/mhdev-89/WebArchive/main/data/screenshots/img2.png</image>
+      <image>https://raw.githubusercontent.com/mhhemati0/WebArchive/main/data/screenshots/img2.png</image>
     </screenshot>
     <screenshot type="default">
       <caption>Browsing Farsi WikiPedia</caption>
-      <image>https://raw.githubusercontent.com/mhdev-89/WebArchive/main/data/screenshots/img3.png</image>
+      <image>https://raw.githubusercontent.com/mhhemati0/WebArchive/main/data/screenshots/img3.png</image>
     </screenshot>
   </screenshots>
 

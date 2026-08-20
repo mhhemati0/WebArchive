@@ -1,4 +1,4 @@
-application_id = 'io.github.mhdev_89.WebArchive'
+application_id = 'io.github.mhhemati0.WebArchive'
 
 scalable_dir = 'hicolor' / 'scalable' / 'apps'
 install_data(

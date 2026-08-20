@@ -1,6 +1,6 @@
 # List of source files containing translatable strings.
 # Please keep this file sorted alphabetically.
-data/io.github.mhdev_89.WebArchive.desktop.in
-data/io.github.mhdev_89.WebArchive.metainfo.xml.in
-data/io.github.mhdev_89.WebArchive.gschema.xml
+data/io.github.mhhemati0.WebArchive.desktop.in
+data/io.github.mhhemati0.WebArchive.metainfo.xml.in
+data/io.github.mhhemati0.WebArchive.gschema.xml
 src/main.py

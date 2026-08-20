@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Web Archive
 Exec=webarchive
-Icon=io.github.mhdev_89.WebArchive
+Icon=io.github.mhhemati0.WebArchive
 Terminal=false
 Type=Application
 Categories=Utility;
