@@ -19,9 +19,6 @@ from gi.repository import Gtk, Adw, Gio, GLib, GObject, Pango, WebKit, Gdk
 icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
 icon_theme.add_resource_path("/io/github/mhhemati0/WebArchive")
 
-RECOMMENDED_ZIM_DIR = Path.home() / "ZIMs"
-RECOMMENDED_ZIM_DIR.mkdir(parents=True, exist_ok=True)
-
 BOOKMARK_ICON_OUTLINE = "user-bookmarks-symbolic"
 BOOKMARK_ICON_FILLED = "bookmark-filled-symbolic"
 
@@ -29,8 +26,7 @@ _OPEN_ARCHIVES = {}
 BOOKMARKS = {}
 HISTORY = {}
 HISTORY_MAX_ENTRIES = 100
-
-_ZIM_SCAN_CACHE = {"scanned": False, "files": []}
+LIBRARY_FOLDER = None
 
 _APP_DATA_DIR = Path(GLib.get_user_data_dir()) / "io.github.mhhemati0.WebArchive"
 _APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -48,6 +44,10 @@ def load_persisted_state():
         BOOKMARKS.update(payload.get("bookmarks", {}))
         for zim_path, entries in payload.get("history", {}).items():
             HISTORY[zim_path] = [(u, t) for u, t in entries]
+        global LIBRARY_FOLDER
+        folder = payload.get("library_folder")
+        if folder and Path(folder).is_dir():
+            LIBRARY_FOLDER = folder
     except (OSError, json.JSONDecodeError, ValueError) as e:
         print(f"Could not load saved library state: {e}")
 
@@ -57,6 +57,7 @@ def _write_persisted_state():
         payload = {
             "bookmarks": BOOKMARKS,
             "history": {zp: [[u, t] for u, t in entries] for zp, entries in HISTORY.items()},
+            "library_folder": LIBRARY_FOLDER,
         }
         tmp_file = STATE_FILE.with_suffix(".json.tmp")
         with open(tmp_file, "w", encoding="utf-8") as f:
@@ -141,6 +142,17 @@ def get_history(zim_path):
 
 def clear_history(zim_path):
     HISTORY[zim_path] = []
+    schedule_state_save()
+
+
+def get_library_folder():
+    return LIBRARY_FOLDER
+
+
+def set_library_folder(path):
+    """Record the folder the user chose via the portal folder chooser."""
+    global LIBRARY_FOLDER
+    LIBRARY_FOLDER = path
     schedule_state_save()
 
 
@@ -533,7 +545,6 @@ class KiwixLibraryDialog(Adw.Dialog):
         download_url = entry.get("download_url")
         if download_url:
             filename = download_url.split("/")[-1]
-            target_path = RECOMMENDED_ZIM_DIR / filename
 
             progress_bar = Gtk.ProgressBar()
             progress_bar.set_hexpand(True)
@@ -541,129 +552,134 @@ class KiwixLibraryDialog(Adw.Dialog):
             progress_bar.set_visible(False)
             inner.append(progress_bar)
 
-            expected_size = entry.get("size_bytes")
+            download_btn = Gtk.Button(icon_name="folder-download-symbolic")
+            download_btn.add_css_class("flat")
+            download_btn.set_tooltip_text("Download ZIM file…")
 
-            def check_is_complete(path, expected):
-                if not path.exists():
-                    return False
-                actual = path.stat().st_size
-                if actual == 0:
-                    return False
-                if not expected:
-                    return True
-                return abs(actual - expected) < max(4096, expected * 0.01)
-
-            existing_is_complete = check_is_complete(target_path, expected_size)
-
-            if existing_is_complete:
-                download_btn = Gtk.Button(icon_name="checkbox-checked-symbolic")
-                download_btn.add_css_class("flat")
+            def start_download(url, target_path):
                 download_btn.set_sensitive(False)
-                download_btn.set_tooltip_text("Already downloaded")
-                footer_row.append(download_btn)
-            else:
-                is_redownload = target_path.exists()
-                download_btn = Gtk.Button(icon_name="folder-download-symbolic")
-                download_btn.add_css_class("flat")
-                download_btn.set_tooltip_text(
-                    "Incomplete download found — click to retry"
-                    if is_redownload
-                    else f"Download to {RECOMMENDED_ZIM_DIR}"
-                )
+                download_btn.set_tooltip_text("Connecting…")
+                progress_bar.set_visible(True)
+                progress_bar.set_fraction(0.0)
+                progress_bar.set_text("Connecting…")
+                pulse_state = {"source_id": GLib.timeout_add(100, lambda: progress_bar.pulse() is None)}
 
-                def trigger_download(btn, url):
-                    btn.set_sensitive(False)
-                    btn.set_tooltip_text("Connecting…")
-                    progress_bar.set_visible(True)
-                    progress_bar.set_fraction(0.0)
-                    progress_bar.set_text("Connecting…")
-                    pulse_state = {"source_id": GLib.timeout_add(100, lambda: progress_bar.pulse() is None)}
+                def stop_connecting_pulse():
+                    if pulse_state["source_id"] is not None:
+                        GLib.source_remove(pulse_state["source_id"])
+                        pulse_state["source_id"] = None
+                    return False
 
-                    def stop_connecting_pulse():
-                        if pulse_state["source_id"] is not None:
-                            GLib.source_remove(pulse_state["source_id"])
-                            pulse_state["source_id"] = None
-                        return False
+                def update_progress(downloaded, total):
+                    stop_connecting_pulse()
+                    if total > 0:
+                        fraction = min(downloaded / total, 1.0)
+                        progress_bar.set_fraction(fraction)
+                        progress_bar.set_text(f"{int(fraction * 100)}%")
+                    else:
+                        progress_bar.pulse()
+                    return False
 
-                    def update_progress(downloaded, total):
-                        stop_connecting_pulse()
-                        if total > 0:
-                            fraction = min(downloaded / total, 1.0)
-                            progress_bar.set_fraction(fraction)
-                            progress_bar.set_text(f"{int(fraction * 100)}%")
-                        else:
-                            progress_bar.pulse()
-                        return False
+                def download_finished(success, message=""):
+                    stop_connecting_pulse()
+                    if success:
+                        progress_bar.set_fraction(1.0)
+                        progress_bar.set_text("Downloaded")
+                        download_btn.set_icon_name("checkbox-checked-symbolic")
+                        download_btn.set_sensitive(False)
+                        download_btn.set_tooltip_text(f"Saved to {target_path}")
+                    else:
+                        progress_bar.set_text("Failed — click to retry")
+                        download_btn.set_sensitive(True)
+                        download_btn.set_tooltip_text(f"Download failed: {message}")
+                        print(f"Download failed for {url}: {message}")
+                        self._show_error_popup(
+                            "Download Failed",
+                            f"Couldn't download \"{entry.get('title', 'this file')}\".\n\n{message}",
+                        )
+                    return False
 
-                    def download_finished(success, message=""):
-                        stop_connecting_pulse()
-                        if success:
-                            progress_bar.set_fraction(1.0)
-                            progress_bar.set_text("Downloaded")
-                            btn.set_icon_name("checkbox-checked-symbolic")
-                            btn.set_tooltip_text("Already downloaded")
-                            invalidate_zim_scan_cache()
-                        else:
-                            progress_bar.set_text("Failed — click to retry")
-                            btn.set_sensitive(True)
-                            btn.set_tooltip_text(f"Download failed: {message}")
-                            print(f"Download failed for {url}: {message}")
-                            self._show_error_popup(
-                                "Download Failed",
-                                f"Couldn't download \"{entry.get('title', 'this file')}\".\n\n{message}",
+                def download_worker():
+                    tmp_path = target_path.with_name(target_path.name + ".part")
+                    try:
+                        req = urllib.request.Request(
+                            url, headers={"User-Agent": "WebArchivesGtk/1.0"}
+                        )
+                        with urllib.request.urlopen(req, timeout=30) as resp:
+                            GLib.idle_add(stop_connecting_pulse)
+                            content_len = resp.headers.get("Content-Length")
+                            server_size = int(content_len) if content_len else None
+                            total_size = server_size or entry.get("size_bytes") or 0
+
+                            downloaded = 0
+                            block_size = 262144
+                            last_ui_update = 0.0
+
+                            with open(tmp_path, "wb") as f:
+                                while True:
+                                    buffer = resp.read(block_size)
+                                    if not buffer:
+                                        break
+                                    downloaded += len(buffer)
+                                    f.write(buffer)
+                                    now = time.monotonic()
+                                    if now - last_ui_update > 0.2:
+                                        last_ui_update = now
+                                        GLib.idle_add(update_progress, downloaded, total_size)
+
+                        if downloaded == 0:
+                            raise IOError("Downloaded file is empty.")
+
+                        if server_size and downloaded < server_size:
+                            raise IOError(
+                                f"Incomplete download: got {downloaded} of {server_size} bytes"
                             )
-                        return False
 
-                    def download_worker():
-                        tmp_path = target_path.with_suffix(target_path.suffix + ".part")
+                        os.replace(tmp_path, target_path)
+                        GLib.idle_add(update_progress, downloaded, downloaded or total_size)
+                        GLib.idle_add(download_finished, True)
+                    except Exception as e:
                         try:
-                            req = urllib.request.Request(
-                                url, headers={"User-Agent": "WebArchivesGtk/1.0"}
-                            )
-                            with urllib.request.urlopen(req, timeout=30) as resp:
-                                GLib.idle_add(stop_connecting_pulse)
-                                content_len = resp.headers.get("Content-Length")
-                                server_size = int(content_len) if content_len else None
-                                total_size = server_size or entry.get("size_bytes") or 0
+                            tmp_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        GLib.idle_add(download_finished, False, _describe_download_error(e))
 
-                                downloaded = 0
-                                block_size = 262144
-                                last_ui_update = 0.0
+                threading.Thread(target=download_worker, daemon=True).start()
 
-                                with open(tmp_path, "wb") as f:
-                                    while True:
-                                        buffer = resp.read(block_size)
-                                        if not buffer:
-                                            break
-                                        downloaded += len(buffer)
-                                        f.write(buffer)
-                                        now = time.monotonic()
-                                        if now - last_ui_update > 0.2:
-                                            last_ui_update = now
-                                            GLib.idle_add(update_progress, downloaded, total_size)
+            def on_folder_chosen_for_download(dialog, result, url=download_url, suggested_name=filename):
+                try:
+                    gfile = dialog.select_folder_finish(result)
+                except GLib.Error as e:
+                    if not e.matches(Gtk.DialogError.quark(), Gtk.DialogError.DISMISSED):
+                        self._show_error_popup("Couldn't Choose Folder", str(e))
+                    return
 
-                            if downloaded == 0:
-                                raise IOError("Downloaded file is empty.")
+                folder_path = gfile.get_path()
+                if not folder_path:
+                    self._show_error_popup(
+                        "Couldn't Choose Folder",
+                        "That location isn't a local folder Web Archives can write to.",
+                    )
+                    return
 
-                            if server_size and downloaded < server_size:
-                                raise IOError(
-                                    f"Incomplete download: got {downloaded} of {server_size} bytes"
-                                )
+                set_library_folder(folder_path)
+                start_download(url, Path(folder_path) / suggested_name)
 
-                            os.replace(tmp_path, target_path)
-                            GLib.idle_add(update_progress, downloaded, downloaded or total_size)
-                            GLib.idle_add(download_finished, True)
-                        except Exception as e:
-                            try:
-                                tmp_path.unlink(missing_ok=True)
-                            except OSError:
-                                pass
-                            GLib.idle_add(download_finished, False, _describe_download_error(e))
+            def begin_download(btn, url=download_url, suggested_name=filename):
+                folder = get_library_folder()
+                if folder:
+                    start_download(url, Path(folder) / suggested_name)
+                    return
 
-                    threading.Thread(target=download_worker, daemon=True).start()
+                # No ZIMs folder chosen yet — ask for one via the portal, then
+                # remember it and download straight into it from now on.
+                folder_dialog = Gtk.FileDialog()
+                folder_dialog.set_title("Choose a ZIMs Folder")
+                folder_dialog.select_folder(self.get_root(), None, on_folder_chosen_for_download)
 
-                download_btn.connect("clicked", lambda b, u=download_url: trigger_download(b, u))
-                footer_row.append(download_btn)
+            download_btn.connect("clicked", begin_download)
+            footer_row.append(download_btn)
 
         inner.append(footer_row)
         icon_url = entry.get("icon_url")
@@ -870,16 +886,12 @@ def _describe_download_error(exc):
     if isinstance(exc, TimeoutError):
         return "The connection timed out. Check your internet connection and try again."
     if isinstance(exc, PermissionError):
-        return f"Permission denied writing to {RECOMMENDED_ZIM_DIR}."
+        return "Permission denied writing to the chosen location."
     if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
         return "Not enough free disk space to finish this download."
     if isinstance(exc, OSError):
         return f"A file system error occurred: {exc}"
     return str(exc)
-
-
-def invalidate_zim_scan_cache():
-    _ZIM_SCAN_CACHE["scanned"] = False
 
 
 def _collect_zim_file_info(full_path):
@@ -899,24 +911,27 @@ def _collect_zim_file_info(full_path):
     }
 
 
-def scan_for_zim_files_background(callback, force=False):
-    if _ZIM_SCAN_CACHE["scanned"] and not force:
-        GLib.idle_add(callback, list(_ZIM_SCAN_CACHE["files"]))
-        return
+def scan_library_folder(callback):
+    """List the .zim files inside the user's chosen ZIMs folder.
+
+    The folder itself was only ever set via the portal folder chooser
+    (Gtk.FileDialog.select_folder) — we never ask the user for a directory
+    to scan on our own, and we never touch anywhere else on disk.
+    """
 
     def worker():
-        zim_files = []
-        if RECOMMENDED_ZIM_DIR.exists():
+        results = []
+        folder = get_library_folder()
+        if folder:
+            folder_path = Path(folder)
             try:
-                for entry in sorted(RECOMMENDED_ZIM_DIR.iterdir()):
-                    if entry.is_file() and entry.suffix.lower() == ".zim":
-                        zim_files.append(_collect_zim_file_info(entry))
+                if folder_path.is_dir():
+                    for entry in sorted(folder_path.iterdir()):
+                        if entry.is_file() and entry.suffix.lower() == ".zim":
+                            results.append(_collect_zim_file_info(entry))
             except OSError:
                 pass
-
-        _ZIM_SCAN_CACHE["scanned"] = True
-        _ZIM_SCAN_CACHE["files"] = zim_files
-        GLib.idle_add(callback, zim_files)
+        GLib.idle_add(callback, results)
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -950,30 +965,23 @@ class HomePageView(Gtk.ScrolledWindow):
         content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
         clamp.set_child(content_box)
 
-        self.local_group = Adw.PreferencesGroup(title="Local Archives")
+        self.local_group = Adw.PreferencesGroup(title="Library")
 
         header_buttons_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-
-        self.info_button = Gtk.Button(icon_name="dialog-information-symbolic")
-        self.info_button.add_css_class("flat")
-        self.info_button.set_valign(Gtk.Align.CENTER)
-        self.info_button.set_tooltip_text("Where to put ZIM files")
-        self.info_button.connect("clicked", self.on_storage_info_clicked)
-        header_buttons_box.append(self.info_button)
-
-        self.open_folder_button = Gtk.Button(icon_name="folder-open-symbolic")
-        self.open_folder_button.add_css_class("flat")
-        self.open_folder_button.set_valign(Gtk.Align.CENTER)
-        self.open_folder_button.set_tooltip_text(f"Open {RECOMMENDED_ZIM_DIR}")
-        self.open_folder_button.connect("clicked", self.on_open_folder_clicked)
-        header_buttons_box.append(self.open_folder_button)
 
         self.reload_button = Gtk.Button(icon_name="view-refresh-symbolic")
         self.reload_button.add_css_class("flat")
         self.reload_button.set_valign(Gtk.Align.CENTER)
-        self.reload_button.set_tooltip_text("Reload ZIM files")
+        self.reload_button.set_tooltip_text("Refresh Library")
         self.reload_button.connect("clicked", self.on_reload_clicked)
         header_buttons_box.append(self.reload_button)
+
+        self.folder_button = Gtk.Button(icon_name="folder-symbolic")
+        self.folder_button.add_css_class("flat")
+        self.folder_button.set_valign(Gtk.Align.CENTER)
+        self.folder_button.set_tooltip_text("Choose ZIMs Folder…")
+        self.folder_button.connect("clicked", self.on_choose_folder_clicked)
+        header_buttons_box.append(self.folder_button)
 
         self.local_group.set_header_suffix(header_buttons_box)
         content_box.append(self.local_group)
@@ -992,18 +1000,67 @@ class HomePageView(Gtk.ScrolledWindow):
         remote_group.add(remote_row)
 
         content_box.append(remote_group)
-        self._start_scan(force=False)
+        self._refresh_folder_state()
 
-    def _start_scan(self, force):
+    def _refresh_folder_state(self):
+        folder = get_library_folder()
+        if folder:
+            self.folder_button.set_tooltip_text(f"Change ZIMs Folder (currently {folder})")
+            self.reload_button.set_sensitive(True)
+            self._load_library()
+        else:
+            self.folder_button.set_tooltip_text("Choose ZIMs Folder…")
+            self.reload_button.set_sensitive(False)
+            self._show_no_folder_prompt()
+
+    def _show_no_folder_prompt(self):
         self._clear_file_rows()
-        self.loading_row = Adw.ActionRow(title="Scanning home directory...")
+        row = Adw.ActionRow(
+            title="No ZIMs folder selected",
+            subtitle="Choose a folder to keep your ZIM files in — downloads will be saved there too.",
+        )
+        row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+
+        choose_btn = Gtk.Button(label="Choose Folder…")
+        choose_btn.add_css_class("suggested-action")
+        choose_btn.set_valign(Gtk.Align.CENTER)
+        choose_btn.connect("clicked", self.on_choose_folder_clicked)
+        row.add_suffix(choose_btn)
+
+        self.local_group.add(row)
+        self._file_rows.append(row)
+
+    def on_choose_folder_clicked(self, button):
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Choose ZIMs Folder")
+        dialog.select_folder(self.get_root(), None, self._on_folder_chosen)
+
+    def _on_folder_chosen(self, dialog, result):
+        try:
+            gfile = dialog.select_folder_finish(result)
+        except GLib.Error as e:
+            if not e.matches(Gtk.DialogError.quark(), Gtk.DialogError.DISMISSED):
+                print(f"Couldn't choose folder: {e}")
+            return
+
+        path = gfile.get_path()
+        if not path:
+            return
+
+        set_library_folder(path)
+        # Auto-reload right after the folder is selected.
+        self._refresh_folder_state()
+
+    def _load_library(self):
+        self._clear_file_rows()
+        self.loading_row = Adw.ActionRow(title="Scanning folder…")
         self.spinner = Gtk.Spinner()
         self.spinner.start()
         self.loading_row.add_suffix(self.spinner)
         self.local_group.add(self.loading_row)
         self.reload_button.set_sensitive(False)
 
-        scan_for_zim_files_background(self.on_zim_scan_complete, force=force)
+        scan_library_folder(self.on_library_loaded)
 
     def _clear_file_rows(self):
         for row in self._file_rows:
@@ -1011,30 +1068,9 @@ class HomePageView(Gtk.ScrolledWindow):
         self._file_rows = []
 
     def on_reload_clicked(self, button):
-        self._start_scan(force=True)
+        self._load_library()
 
-    def on_storage_info_clicked(self, button):
-        dialog = Adw.AlertDialog(
-            heading="Notice",
-            body=f"If you have any ZIM files put them in here :\n {RECOMMENDED_ZIM_DIR} \n The files downloaded from the Kiwix Library will automatically save there",
-        )
-        dialog.add_response("ok", "Got It")
-        dialog.set_default_response("ok")
-        dialog.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
-        dialog.present(self.get_root())
-
-    def on_open_folder_clicked(self, button):
-        gfile = Gio.File.new_for_path(str(RECOMMENDED_ZIM_DIR))
-        launcher = Gtk.FileLauncher(file=gfile)
-        launcher.launch(self.get_root(), None, self._on_open_folder_done)
-
-    def _on_open_folder_done(self, launcher, result):
-        try:
-            launcher.launch_finish(result)
-        except GLib.Error as e:
-            print(f"Couldn't open {RECOMMENDED_ZIM_DIR}: {e}")
-
-    def on_zim_scan_complete(self, zim_files):
+    def on_library_loaded(self, zim_files):
         if self.loading_row is not None:
             self.local_group.remove(self.loading_row)
             self.loading_row = None
@@ -1090,8 +1126,8 @@ class HomePageView(Gtk.ScrolledWindow):
                 self._file_rows.append(row)
         else:
             empty_row = Adw.ActionRow(
-                title="No .zim files found",
-                subtitle=f"Add .zim files to {RECOMMENDED_ZIM_DIR} — use the folder button above to open it.",
+                title="No ZIM files found",
+                subtitle=f"Add .zim files to {get_library_folder()}, then hit refresh.",
             )
             empty_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
             self.local_group.add(empty_row)
@@ -1188,6 +1224,9 @@ class HomePageView(Gtk.ScrolledWindow):
 
     def _on_remote_row_activated(self, row):
         dialog = KiwixLibraryDialog()
+        # Auto-reload the library once the user closes the catalog dialog,
+        # so anything they downloaded shows up immediately back on Home.
+        dialog.connect("closed", lambda d: self._refresh_folder_state())
         dialog.present(self.get_root())
 
 
