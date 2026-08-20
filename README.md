@@ -30,7 +30,7 @@ libadwaita application.
 
 <!-- Once published on Flathub:
 ```
-flatpak install flathub io.github.mhdev_89.WebArchive
+flatpak install flathub io.github.mhhemati0.WebArchive
 ```
 -->
 
@@ -48,8 +48,8 @@ Requires `flatpak` and `flatpak-builder`, plus the GNOME 50 platform/SDK:
 
 ```bash
 flatpak install flathub org.gnome.Platform//50 org.gnome.Sdk//50
-flatpak-builder --user --install --force-clean build-dir io.github.mhdev_89.WebArchive.json
-flatpak run io.github.mhdev_89.WebArchive
+flatpak-builder --user --install --force-clean build-dir io.github.mhhemati0.WebArchive.json
+flatpak run io.github.mhhemati0.WebArchive
 ```
 
 ## Tech stack

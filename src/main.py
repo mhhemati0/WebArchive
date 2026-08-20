@@ -17,7 +17,7 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Gtk, Adw, Gio, GLib, GObject, Pango, WebKit, Gdk
 
 icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
-icon_theme.add_resource_path("/io/github/mhdev_89/WebArchive")
+icon_theme.add_resource_path("/io/github/mhhemati0/WebArchive")
 
 RECOMMENDED_ZIM_DIR = Path.home() / "ZIMs"
 RECOMMENDED_ZIM_DIR.mkdir(parents=True, exist_ok=True)
@@ -32,7 +32,7 @@ HISTORY_MAX_ENTRIES = 100
 
 _ZIM_SCAN_CACHE = {"scanned": False, "files": []}
 
-_APP_DATA_DIR = Path(GLib.get_user_data_dir()) / "io.github.mhdev_89.WebArchive"
+_APP_DATA_DIR = Path(GLib.get_user_data_dir()) / "io.github.mhhemati0.WebArchive"
 _APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 STATE_FILE = _APP_DATA_DIR / "library-state.json"
 
@@ -2091,7 +2091,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
 class WebArchivesApp(Adw.Application):
     def __init__(self):
         super().__init__(
-            application_id="io.github.mhdev_89.WebArchive",
+            application_id="io.github.mhhemati0.WebArchive",
             flags=Gio.ApplicationFlags.FLAGS_NONE,
         )
 
