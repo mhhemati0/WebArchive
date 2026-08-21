@@ -38,7 +38,7 @@ Not yet published — see [Building](#building) to run it from source.
 
 ## Getting ZIM files
 
-Place `.zim` files in `~/ZIMs`, or download them directly from the
+Place `.zim` files in the folder you prefer, or download them directly from the
 built-in Kiwix library browser inside the app. More archives are available
 at [library.kiwix.org](https://library.kiwix.org).
 
