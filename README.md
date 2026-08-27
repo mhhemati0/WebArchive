@@ -28,13 +28,11 @@ libadwaita application.
 
 ## Installing
 
-<!-- Once published on Flathub:
 ```
 flatpak install flathub io.github.mhhemati0.WebArchive
 ```
--->
 
-Not yet published — see [Building](#building) to run it from source.
+see [Building](#building) to run it from source.
 
 ## Getting ZIM files
 
