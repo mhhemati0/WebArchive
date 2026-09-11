@@ -1,30 +1,30 @@
 {
-    "id" : "io.github.mhhemati0.WebArchive",
-    "runtime" : "org.gnome.Platform",
-    "runtime-version" : "50",
-    "sdk" : "org.gnome.Sdk",
-    "command" : "webarchive",
-    "finish-args" : [
+    "id": "io.github.mhhemati0.WebArchive",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "50",
+    "sdk": "org.gnome.Sdk",
+    "command": "webarchive",
+    "finish-args": [
         "--share=network",
         "--share=ipc",
         "--socket=fallback-x11",
         "--device=dri",
-        "--socket=wayland"],
-    "cleanup" : [
-        "/include",
-        "/lib/pkgconfig",
-        "/man",
-        "/share/doc",
-        "/share/gtk-doc",
-        "/share/man",
-        "/share/pkgconfig",
-        "*.la",
-        "*.a"],
-    "modules" : [
+        "--socket=wayland"
+    ],
+    "modules": [
         "python3-libzim.json",
         {
-            "name" : "webarchive",
-            "builddir" : true,
-            "buildsystem" : "meson",
-            "sources" : [
-		{"type" : "git","url" : "https://github.com/mhhemati0/WebArchive.git","tag" : "v1.2.2","commit":"c683529d3876ff53f9d68d53da8237faea979589"}]}]}
+            "name": "webarchive",
+            "builddir": true,
+            "buildsystem": "meson",
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/mhhemati0/WebArchive.git",
+                    "tag": "v1.2.1",
+                    "commit": "e203b0cd0ec878d8489b1a922817dfcf9fc7635e"
+                }
+            ]
+        }
+    ]
+}
