@@ -30,13 +30,12 @@ class WebArchivesWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.set_default_size(800, 600)
+        # Allow the window to be resized down to a typical phone width
+        # instead of clamping to the desktop default.
+        self.set_size_request(360, 480)
         self.set_title("Web Archives")
 
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.set_content(main_box)
-
-        header_bar = Adw.HeaderBar()
-        main_box.append(header_bar)
+        self.header_bar = header_bar = Adw.HeaderBar()
 
         title_widget = Adw.WindowTitle(title="Web Archives")
         header_bar.set_title_widget(title_widget)
@@ -55,9 +54,9 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.forward_button.connect("clicked", self.on_forward_clicked)
         header_bar.pack_start(self.forward_button)
 
-        new_tab_button = Gtk.Button(icon_name="tab-new-symbolic", tooltip_text="New Tab")
-        new_tab_button.connect("clicked", self.on_new_tab_clicked)
-        header_bar.pack_start(new_tab_button)
+        self.new_tab_button = Gtk.Button(icon_name="tab-new-symbolic", tooltip_text="New Tab")
+        self.new_tab_button.connect("clicked", self.on_new_tab_clicked)
+        header_bar.pack_start(self.new_tab_button)
 
         self.bookmark_top_btn = Gtk.Button(
             icon_name=BOOKMARK_ICON_OUTLINE, tooltip_text="Bookmark Page"
@@ -75,20 +74,103 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.zim_menu_button.set_visible(False)
         header_bar.pack_end(self.zim_menu_button)
 
-        self._build_options_menu()
-
         self.tab_view = Adw.TabView()
         self.tab_view.set_vexpand(True)
 
+        # Wide/desktop windows: a classic horizontal tab strip under the
+        # header bar.
         self.tab_bar = Adw.TabBar()
         self.tab_bar.set_view(self.tab_view)
         self.tab_bar.set_autohide(True)
 
-        main_box.append(self.tab_bar)
-        main_box.append(self.tab_view)
+        # Narrow/phone windows: a compact button showing the tab count
+        # that opens the grid-style AdwTabOverview instead. It only ever
+        # lives in the bottom bar (added there on narrow, never in the
+        # header), so no header placement here.
+        self.tab_button = Adw.TabButton()
+        self.tab_button.set_view(self.tab_view)
+        self.tab_button.set_action_name("overview.open")
+
+        # Narrow/phone windows: a browser-style bottom toolbar. Empty and
+        # hidden until the breakpoint below moves the navigation buttons
+        # into it.
+        self.bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.bottom_bar.set_homogeneous(True)
+        self.bottom_bar.add_css_class("toolbar")
+        self.bottom_bar.set_visible(False)
+
+        self._build_options_menu()
+
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(header_bar)
+        toolbar_view.add_top_bar(self.tab_bar)
+        toolbar_view.set_content(self.tab_view)
+        toolbar_view.add_bottom_bar(self.bottom_bar)
+
+        # AdwTabOverview must be the window's direct content, with the
+        # header bar/tab bar/tab view living inside it as its child.
+        self.tab_overview = Adw.TabOverview()
+        self.tab_overview.set_view(self.tab_view)
+        self.tab_overview.set_enable_new_tab(True)
+        self.tab_overview.connect("create-tab", self.on_tab_overview_create_tab)
+        self.tab_overview.set_child(toolbar_view)
+
+        self.set_content(self.tab_overview)
+
+        # On phone-sized windows: show the tab overview button instead of
+        # the tab bar, hide the header's own "new tab" button since the
+        # overview already provides one, and move home/back/forward/tabs/
+        # more down into a browser-style bottom bar.
+        narrow_breakpoint = Adw.Breakpoint.new(
+            Adw.BreakpointCondition.parse("max-width: 500sp")
+        )
+        narrow_breakpoint.add_setter(self.tab_bar, "visible", False)
+        narrow_breakpoint.add_setter(self.new_tab_button, "visible", False)
+        narrow_breakpoint.connect("apply", self._enter_narrow_mode)
+        narrow_breakpoint.connect("unapply", self._leave_narrow_mode)
+        self.add_breakpoint(narrow_breakpoint)
 
         self.tab_view.connect("notify::selected-page", self.on_selected_page_changed)
         self.add_new_tab()
+
+    def _enter_narrow_mode(self, breakpoint):
+        # Move navigation controls out of the header and into the bottom
+        # bar, browser-style: home, back, forward, tabs, bookmark, more.
+        self.header_bar.remove(self.home_button)
+        self.header_bar.remove(self.back_button)
+        self.header_bar.remove(self.forward_button)
+        self.header_bar.remove(self.bookmark_top_btn)
+        self.header_bar.remove(self.zim_menu_button)
+
+        self.bottom_bar.append(self.home_button)
+        self.bottom_bar.append(self.back_button)
+        self.bottom_bar.append(self.forward_button)
+        self.bottom_bar.append(self.tab_button)
+        self.bottom_bar.append(self.bookmark_top_btn)
+        self.bottom_bar.append(self.zim_menu_button)
+        self.bottom_bar.set_visible(True)
+
+    def _leave_narrow_mode(self, breakpoint):
+        self.bottom_bar.remove(self.home_button)
+        self.bottom_bar.remove(self.back_button)
+        self.bottom_bar.remove(self.forward_button)
+        self.bottom_bar.remove(self.tab_button)
+        self.bottom_bar.remove(self.bookmark_top_btn)
+        self.bottom_bar.remove(self.zim_menu_button)
+        self.bottom_bar.set_visible(False)
+
+        # Rebuild the header's start box from scratch so the original
+        # left-to-right order (home, back, forward, new tab, bookmark) is
+        # restored exactly, rather than appending after whatever was left
+        # in place.
+        self.header_bar.remove(self.new_tab_button)
+
+        self.header_bar.pack_start(self.home_button)
+        self.header_bar.pack_start(self.back_button)
+        self.header_bar.pack_start(self.forward_button)
+        self.header_bar.pack_start(self.new_tab_button)
+        self.header_bar.pack_start(self.bookmark_top_btn)
+        self.header_bar.pack_end(self.zim_menu_button)
 
     def _build_options_menu(self):
         popover_box = Gtk.Box(
@@ -173,6 +255,12 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         page.set_title("Home")
         page.set_icon(Gio.ThemedIcon.new("user-home-symbolic"))
         self.tab_view.set_selected_page(page)
+        return page
+
+    def on_tab_overview_create_tab(self, tab_overview):
+        # Called when the "+" button inside AdwTabOverview is pressed
+        # (phone mode). Must return the newly created AdwTabPage.
+        return self.add_new_tab()
 
     def _replace_current_tab(self, new_child, title, icon):
         old_page = self.tab_view.get_selected_page()
