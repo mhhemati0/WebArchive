@@ -27,4 +27,4 @@
             "builddir" : true,
             "buildsystem" : "meson",
             "sources" : [
-		{"type" : "git","url" : "https://github.com/mhhemati0/WebArchive.git","tag" : "v1.1.0","commit":"f965fc9fdac75a5434ac522fd18ea531e2479d75"}]}]}
+		{"type" : "git","url" : "https://github.com/mhhemati0/WebArchive.git","tag" : "v1.2.2","commit":"c683529d3876ff53f9d68d53da8237faea979589"}]}]}
