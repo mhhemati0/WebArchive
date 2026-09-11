@@ -10,7 +10,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import gi
-
+from libzim.reader import Archive
+from libzim.search import Query, Searcher
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("WebKit", "6.0")
@@ -79,13 +80,6 @@ def schedule_state_save():
         return False
 
     GLib.timeout_add(500, _do_save)
-
-
-try:
-    from libzim.reader import Archive
-    from libzim.search import Query, Searcher
-except ImportError:
-    pass
 
 
 def is_bookmarked(zim_path, uri):
