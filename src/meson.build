@@ -19,5 +19,14 @@ configure_file(
   install: true,
   install_dir: get_option('bindir'),
   install_mode: 'rwxr-xr-x')
-webarchive_sources = ['main.py',]
+webarchive_sources = files(
+  'main.py',
+  'webarchive/app.py',
+  'webarchive/home.py',
+  'webarchive/__init__.py',
+  'webarchive/kiwix_lib.py',
+  'webarchive/state.py',
+  'webarchive/window.py',
+  'webarchive/zim.py',
+)
 install_data(webarchive_sources, install_dir: moduledir)
