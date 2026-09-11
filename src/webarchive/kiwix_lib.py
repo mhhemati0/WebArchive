@@ -18,7 +18,14 @@ from .state import (
     get_library_folder,
     set_library_folder,
     describe_download_error,
+    resolve_display_path,
+    get_cached_icon_bytes,
+    store_cached_icon_bytes,
 )
+
+# In-process cache so icons already fetched this session are applied
+# instantly, without even touching the on-disk cache.
+_ICON_MEMORY_CACHE = {}
 
 class KiwixLibraryDialog(Adw.Dialog):
     def __init__(self):
@@ -316,7 +323,7 @@ class KiwixLibraryDialog(Adw.Dialog):
                         progress_bar.set_text("Downloaded")
                         download_btn.set_icon_name("checkbox-checked-symbolic")
                         download_btn.set_sensitive(False)
-                        download_btn.set_tooltip_text(f"Saved to {target_path}")
+                        download_btn.set_tooltip_text(f"Saved to {resolve_display_path(target_path)}")
                     else:
                         progress_bar.set_text("Failed — click to retry")
                         download_btn.set_sensitive(True)
@@ -413,13 +420,26 @@ class KiwixLibraryDialog(Adw.Dialog):
         return card
 
     def _load_card_icon(self, url, image_widget):
+        # Fastest path: already fetched this session, apply immediately.
+        cached = _ICON_MEMORY_CACHE.get(url)
+        if cached is not None:
+            self._apply_card_icon(image_widget, cached)
+            return
+
         def worker():
-            try:
-                request = urllib.request.Request(url, headers={"User-Agent": "WebArchivesGtk/1.0"})
-                with urllib.request.urlopen(request, timeout=10) as response:
-                    data = response.read()
-            except Exception:
-                return
+            data = get_cached_icon_bytes(url)
+            if data is None:
+                try:
+                    request = urllib.request.Request(
+                        url, headers={"User-Agent": "WebArchivesGtk/1.0"}
+                    )
+                    with urllib.request.urlopen(request, timeout=10) as response:
+                        data = response.read()
+                except Exception:
+                    return
+                store_cached_icon_bytes(url, data)
+
+            _ICON_MEMORY_CACHE[url] = data
             GLib.idle_add(self._apply_card_icon, image_widget, data)
 
         threading.Thread(target=worker, daemon=True).start()

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import threading
@@ -27,7 +28,72 @@ _APP_DATA_DIR = Path(GLib.get_user_data_dir()) / "io.github.mhhemati0.WebArchive
 _APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 STATE_FILE = _APP_DATA_DIR / "library-state.json"
 
+_ICON_CACHE_DIR = Path(GLib.get_user_cache_dir()) / "io.github.mhhemati0.WebArchive" / "icons"
+_ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 save_state = {"scheduled": False}
+
+
+def _icon_cache_path(url):
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    return _ICON_CACHE_DIR / f"{digest}.img"
+
+
+def get_cached_icon_bytes(url):
+    """Return previously-downloaded icon bytes for a Kiwix catalog url, or
+    None if we haven't cached anything for it yet."""
+    if not url:
+        return None
+    try:
+        return _icon_cache_path(url).read_bytes()
+    except OSError:
+        return None
+
+
+def store_cached_icon_bytes(url, data):
+    """Persist downloaded icon bytes to disk so future searches can reuse
+    them instead of re-downloading from the Kiwix catalog."""
+    if not url or not data:
+        return
+    cache_path = _icon_cache_path(url)
+    tmp_path = cache_path.with_suffix(".tmp")
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(data)
+        os.replace(tmp_path, cache_path)
+    except OSError:
+        pass
+
+
+def resolve_display_path(path):
+    """Return a user-friendly filesystem path for display purposes.
+
+    Under Flatpak (and other sandboxes that mediate folder access through
+    the XDG document portal), Gtk.FileDialog hands back paths like
+    /run/user/1000/doc/<id>/Videos instead of the real /home/user/Videos.
+    The portal exposes the real host path as an extended attribute on the
+    fuse file, so we read that here for anything shown to the user. The
+    original portal path is still what should be used for actual file I/O,
+    since that's what the sandbox actually grants access to.
+    """
+    if not path:
+        return path
+    path_str = str(path)
+    if "/doc/" not in path_str:
+        return path_str
+    try:
+        gfile = Gio.File.new_for_path(path_str)
+        info = gfile.query_info(
+            "xattr::document-portal.host-path",
+            Gio.FileQueryInfoFlags.NONE,
+            None,
+        )
+        host_path = info.get_attribute_as_string("xattr::document-portal.host-path")
+        if host_path:
+            return host_path
+    except GLib.Error:
+        pass
+    return path_str
 
 
 def load_persisted_state():

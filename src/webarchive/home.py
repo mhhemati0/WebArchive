@@ -9,6 +9,7 @@ from .state import (
     set_library_folder,
     scan_library_folder,
     get_full_zim_details,
+    resolve_display_path,
 )
 from .kiwix_lib import KiwixLibraryDialog
 
@@ -81,7 +82,9 @@ class HomePageView(Gtk.ScrolledWindow):
     def _refresh_folder_state(self):
         folder = get_library_folder()
         if folder:
-            self.folder_button.set_tooltip_text(f"Change ZIMs Folder (currently {folder})")
+            self.folder_button.set_tooltip_text(
+                f"Change ZIMs Folder (currently {resolve_display_path(folder)})"
+            )
             self.reload_button.set_sensitive(True)
             self._load_library()
         else:
@@ -202,7 +205,7 @@ class HomePageView(Gtk.ScrolledWindow):
         else:
             empty_row = Adw.ActionRow(
                 title="No ZIM files found",
-                subtitle=f"Add .zim files to {get_library_folder()}, then hit refresh.",
+                subtitle=f"Add .zim files to {resolve_display_path(get_library_folder())}, then hit refresh.",
             )
             empty_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
             self.local_group.add(empty_row)
@@ -256,8 +259,12 @@ class HomePageView(Gtk.ScrolledWindow):
         title_label.set_xalign(0)
         add_detail_row("Title", title_label)
 
+        display_location = resolve_display_path(details["location"])
         location_label = Gtk.Label(
-            label=f'<a href="file://{details["location"]}">{details["location"]}</a>',
+            label=(
+                f'<a href="file://{GLib.markup_escape_text(details["location"])}">'
+                f'{GLib.markup_escape_text(display_location)}</a>'
+            ),
             use_markup=True,
             wrap=True,
             max_width_chars=35,
