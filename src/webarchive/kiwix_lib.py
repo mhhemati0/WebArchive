@@ -23,8 +23,8 @@ from .state import (
 class KiwixLibraryDialog(Adw.Dialog):
     def __init__(self):
         super().__init__()
-        self.set_content_width(1000)
-        self.set_content_height(760)
+        self.set_content_width(680)
+        self.set_content_height(600)
         self.set_title("Kiwix Library")
 
         key_controller = Gtk.EventControllerKey()
@@ -39,34 +39,44 @@ class KiwixLibraryDialog(Adw.Dialog):
         toolbar_view.add_top_bar(header_bar)
 
         root_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         controls.set_margin_top(12)
         controls.set_margin_bottom(12)
         controls.set_margin_start(12)
         controls.set_margin_end(12)
 
+        search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
         self.search_entry = Gtk.SearchEntry()
         self.search_entry.set_hexpand(True)
         self.search_entry.set_placeholder_text("Search ZIM files… (e.g. Wikipedia, TED)")
         self.search_entry.connect("activate", self._on_search_activate)
-        controls.append(self.search_entry)
+        search_row.append(self.search_entry)
+
+        search_button = Gtk.Button(label="Search")
+        search_button.add_css_class("suggested-action")
+        search_button.connect("clicked", self._on_search_activate)
+        search_row.append(search_button)
+
+        controls.append(search_row)
+        filters_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        filters_row.set_homogeneous(True)
 
         self.language_dropdown = Gtk.DropDown(
             model=Gtk.StringList.new([label for _code, label in KIWIX_LANGUAGES])
         )
         self.language_dropdown.set_tooltip_text("Language")
-        controls.append(self.language_dropdown)
+        self.language_dropdown.set_hexpand(True)
+        filters_row.append(self.language_dropdown)
 
         self.category_dropdown = Gtk.DropDown(
             model=Gtk.StringList.new([label for _code, label in KIWIX_CATEGORIES])
         )
         self.category_dropdown.set_tooltip_text("Category")
-        controls.append(self.category_dropdown)
+        self.category_dropdown.set_hexpand(True)
+        filters_row.append(self.category_dropdown)
 
-        search_button = Gtk.Button(label="Search")
-        search_button.add_css_class("suggested-action")
-        search_button.connect("clicked", self._on_search_activate)
-        controls.append(search_button)
+        controls.append(filters_row)
 
         root_box.append(controls)
         root_box.append(Gtk.Separator())
@@ -113,10 +123,10 @@ class KiwixLibraryDialog(Adw.Dialog):
 
         self.flow_box = Gtk.FlowBox()
         self.flow_box.set_valign(Gtk.Align.START)
-        self.flow_box.set_max_children_per_line(3)
-        self.flow_box.set_min_children_per_line(1)
-        self.flow_box.set_row_spacing(12)
-        self.flow_box.set_column_spacing(12)
+        self.flow_box.set_max_children_per_line(4)
+        self.flow_box.set_min_children_per_line(2)
+        self.flow_box.set_row_spacing(10)
+        self.flow_box.set_column_spacing(10)
         self.flow_box.set_homogeneous(True)
         self.flow_box.set_selection_mode(Gtk.SelectionMode.NONE)
         self.flow_box.set_margin_top(12)
@@ -211,58 +221,52 @@ class KiwixLibraryDialog(Adw.Dialog):
         error_dialog.present(self)
 
     def _build_result_card(self, entry):
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         card.add_css_class("card")
-        card.set_size_request(280, -1)
+        card.set_size_request(140, 150)
         card.set_margin_top(4)
         card.set_margin_bottom(4)
         card.set_margin_start(4)
         card.set_margin_end(4)
 
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        if entry.get("summary"):
+            card.set_tooltip_text(entry["summary"])
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        inner.set_valign(Gtk.Align.CENTER)
+        inner.set_vexpand(True)
         inner.set_margin_top(12)
         inner.set_margin_bottom(12)
-        inner.set_margin_start(12)
-        inner.set_margin_end(12)
+        inner.set_margin_start(10)
+        inner.set_margin_end(10)
         card.append(inner)
 
-        header_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         icon_image = Gtk.Image.new_from_icon_name("network-server-symbolic")
         icon_image.set_pixel_size(40)
-        header_row.append(icon_image)
+        icon_image.set_halign(Gtk.Align.CENTER)
+        inner.append(icon_image)
 
-        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        title_box.set_hexpand(True)
-        title_label = Gtk.Label(label=entry["title"], wrap=True)
-        title_label.set_xalign(0)
+        title_label = Gtk.Label(label=entry["title"], wrap=True, justify=Gtk.Justification.CENTER)
+        title_label.set_halign(Gtk.Align.CENTER)
+        title_label.set_lines(2)
+        title_label.set_ellipsize(Pango.EllipsizeMode.END)
         title_label.add_css_class("heading")
-        title_box.append(title_label)
+        inner.append(title_label)
 
         meta_bits = [bit for bit in (entry.get("category"), entry.get("language")) if bit]
         if meta_bits:
-            meta_label = Gtk.Label(label=" • ".join(meta_bits))
-            meta_label.set_xalign(0)
+            meta_label = Gtk.Label(label=" • ".join(meta_bits), wrap=True, justify=Gtk.Justification.CENTER)
+            meta_label.set_halign(Gtk.Align.CENTER)
             meta_label.add_css_class("dim-label")
             meta_label.add_css_class("caption")
-            title_box.append(meta_label)
+            inner.append(meta_label)
 
-        header_row.append(title_box)
-        inner.append(header_row)
-
-        if entry.get("summary"):
-            desc_label = Gtk.Label(label=entry["summary"], wrap=True)
-            desc_label.set_xalign(0)
-            desc_label.set_lines(3)
-            desc_label.set_ellipsize(Pango.EllipsizeMode.END)
-            desc_label.add_css_class("dim-label")
-            inner.append(desc_label)
-
-        footer_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         size_label = Gtk.Label(label=format_byte_size(entry.get("size_bytes")))
-        size_label.set_xalign(0)
-        size_label.set_hexpand(True)
+        size_label.set_halign(Gtk.Align.CENTER)
         size_label.add_css_class("dim-label")
-        footer_row.append(size_label)
+        size_label.add_css_class("caption")
+        inner.append(size_label)
 
         download_url = entry.get("download_url")
         if download_url:
@@ -270,12 +274,14 @@ class KiwixLibraryDialog(Adw.Dialog):
 
             progress_bar = Gtk.ProgressBar()
             progress_bar.set_hexpand(True)
-            progress_bar.set_show_text(True)
+            progress_bar.set_show_text(False)
             progress_bar.set_visible(False)
             inner.append(progress_bar)
 
             download_btn = Gtk.Button(icon_name="folder-download-symbolic")
             download_btn.add_css_class("flat")
+            download_btn.add_css_class("circular")
+            download_btn.set_halign(Gtk.Align.CENTER)
             download_btn.set_tooltip_text("Download ZIM file…")
 
             def start_download(url, target_path):
@@ -399,9 +405,8 @@ class KiwixLibraryDialog(Adw.Dialog):
                 folder_dialog.select_folder(self.get_root(), None, on_folder_chosen_for_download)
 
             download_btn.connect("clicked", begin_download)
-            footer_row.append(download_btn)
+            inner.append(download_btn)
 
-        inner.append(footer_row)
         icon_url = entry.get("icon_url")
         if icon_url:
             self._load_card_icon(icon_url, icon_image)

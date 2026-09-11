@@ -30,8 +30,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.set_default_size(800, 600)
-        # Allow the window to be resized down to a typical phone width
-        # instead of clamping to the desktop default.
+
         self.set_size_request(360, 480)
         self.set_title("Web Archives")
 
@@ -77,23 +76,14 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.tab_view = Adw.TabView()
         self.tab_view.set_vexpand(True)
 
-        # Wide/desktop windows: a classic horizontal tab strip under the
-        # header bar.
         self.tab_bar = Adw.TabBar()
         self.tab_bar.set_view(self.tab_view)
         self.tab_bar.set_autohide(True)
 
-        # Narrow/phone windows: a compact button showing the tab count
-        # that opens the grid-style AdwTabOverview instead. It only ever
-        # lives in the bottom bar (added there on narrow, never in the
-        # header), so no header placement here.
         self.tab_button = Adw.TabButton()
         self.tab_button.set_view(self.tab_view)
         self.tab_button.set_action_name("overview.open")
 
-        # Narrow/phone windows: a browser-style bottom toolbar. Empty and
-        # hidden until the breakpoint below moves the navigation buttons
-        # into it.
         self.bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         self.bottom_bar.set_homogeneous(True)
         self.bottom_bar.add_css_class("toolbar")
@@ -107,8 +97,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         toolbar_view.set_content(self.tab_view)
         toolbar_view.add_bottom_bar(self.bottom_bar)
 
-        # AdwTabOverview must be the window's direct content, with the
-        # header bar/tab bar/tab view living inside it as its child.
         self.tab_overview = Adw.TabOverview()
         self.tab_overview.set_view(self.tab_view)
         self.tab_overview.set_enable_new_tab(True)
@@ -117,10 +105,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
 
         self.set_content(self.tab_overview)
 
-        # On phone-sized windows: show the tab overview button instead of
-        # the tab bar, hide the header's own "new tab" button since the
-        # overview already provides one, and move home/back/forward/tabs/
-        # more down into a browser-style bottom bar.
         narrow_breakpoint = Adw.Breakpoint.new(
             Adw.BreakpointCondition.parse("max-width: 500sp")
         )
@@ -134,8 +118,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.add_new_tab()
 
     def _enter_narrow_mode(self, breakpoint):
-        # Move navigation controls out of the header and into the bottom
-        # bar, browser-style: home, back, forward, tabs, bookmark, more.
         self.header_bar.remove(self.home_button)
         self.header_bar.remove(self.back_button)
         self.header_bar.remove(self.forward_button)
@@ -159,10 +141,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.bottom_bar.remove(self.zim_menu_button)
         self.bottom_bar.set_visible(False)
 
-        # Rebuild the header's start box from scratch so the original
-        # left-to-right order (home, back, forward, new tab, bookmark) is
-        # restored exactly, rather than appending after whatever was left
-        # in place.
         self.header_bar.remove(self.new_tab_button)
 
         self.header_bar.pack_start(self.home_button)
@@ -258,8 +236,6 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         return page
 
     def on_tab_overview_create_tab(self, tab_overview):
-        # Called when the "+" button inside AdwTabOverview is pressed
-        # (phone mode). Must return the newly created AdwTabPage.
         return self.add_new_tab()
 
     def _replace_current_tab(self, new_child, title, icon):
