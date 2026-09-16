@@ -49,9 +49,14 @@
     </screenshot>
   </screenshots>
   <releases>
-    <release version="1.2.3" date="2026-09-16">
+    <release version="1.2.3" date="2026-09-17">
       <description translate="no">
-        <p>Fix : Some files in kiwix library not working.</p>
+        <p>This update introduces :</p>
+        <ul>
+          <li>a built in download manager with stop/start download function</li>
+          <li>a popup explaining about the app for begginers</li>
+          <li>a couple of fixes for the Kiwix Library</li>
+        </ul>
       </description>
     </release>
     <release version="1.2.2" date="2026-09-14">
