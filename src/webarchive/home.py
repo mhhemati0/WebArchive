@@ -84,20 +84,20 @@ class HomePageView(Gtk.ScrolledWindow):
         folder = get_library_folder()
         if folder:
             self.folder_button.set_tooltip_text(
-                f"Change ZIMs Folder (currently {resolve_display_path(folder)})"
+                f"Change the Folder (currently {resolve_display_path(folder)})"
             )
             self.reload_button.set_sensitive(True)
             self._load_library()
         else:
-            self.folder_button.set_tooltip_text("Choose ZIMs Folder…")
+            self.folder_button.set_tooltip_text("Choose a Folder…")
             self.reload_button.set_sensitive(False)
             self._show_no_folder_prompt()
 
     def _show_no_folder_prompt(self):
         self._clear_file_rows()
         row = Adw.ActionRow(
-            title="No ZIMs folder selected",
-            subtitle="Choose a folder to keep your ZIM files in — downloads will be saved there too.",
+            title="No folder selected",
+            subtitle="Choose/Create a folder to keep your ZIM files in",
         )
         row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
 
