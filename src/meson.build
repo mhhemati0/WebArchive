@@ -28,5 +28,8 @@ webarchive_sources = files(
   'webarchive/state.py',
   'webarchive/window.py',
   'webarchive/zim.py',
+  'webarchive/welcome.py',
+  'webarchive/downloads.py',
+  'webarchive/downloads_ui.py',
 )
 install_data(webarchive_sources, install_dir: moduledir)

@@ -25,6 +25,8 @@ from .state import (
 )
 from .home import HomePageView
 from .zim import ZimPageView
+from .downloads import DownloadManager, STATUS_QUEUED, STATUS_DOWNLOADING, STATUS_PAUSED
+from .downloads_ui import DownloadsDialog
 
 class WebArchivesWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
@@ -56,6 +58,15 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.new_tab_button = Gtk.Button(icon_name="tab-new-symbolic", tooltip_text="New Tab")
         self.new_tab_button.connect("clicked", self.on_new_tab_clicked)
         header_bar.pack_start(self.new_tab_button)
+
+        self.downloads_button = Gtk.Button(icon_name="folder-download-symbolic", tooltip_text="Downloads")
+        self.downloads_button.connect("clicked", self.on_downloads_clicked)
+        header_bar.pack_end(self.downloads_button)
+
+        self.download_manager = DownloadManager.get()
+        self.download_manager.connect("download-changed", self._on_downloads_changed)
+        self.download_manager.connect("download-removed", self._on_downloads_changed)
+        self._update_downloads_indicator()
 
         self.bookmark_top_btn = Gtk.Button(
             icon_name=BOOKMARK_ICON_OUTLINE, tooltip_text="Bookmark Page"
@@ -123,12 +134,14 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.header_bar.remove(self.forward_button)
         self.header_bar.remove(self.bookmark_top_btn)
         self.header_bar.remove(self.zim_menu_button)
+        self.header_bar.remove(self.downloads_button)
 
         self.bottom_bar.append(self.home_button)
         self.bottom_bar.append(self.back_button)
         self.bottom_bar.append(self.forward_button)
         self.bottom_bar.append(self.tab_button)
         self.bottom_bar.append(self.bookmark_top_btn)
+        self.bottom_bar.append(self.downloads_button)
         self.bottom_bar.append(self.zim_menu_button)
         self.bottom_bar.set_visible(True)
 
@@ -138,6 +151,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.bottom_bar.remove(self.forward_button)
         self.bottom_bar.remove(self.tab_button)
         self.bottom_bar.remove(self.bookmark_top_btn)
+        self.bottom_bar.remove(self.downloads_button)
         self.bottom_bar.remove(self.zim_menu_button)
         self.bottom_bar.set_visible(False)
 
@@ -149,6 +163,7 @@ class WebArchivesWindow(Adw.ApplicationWindow):
         self.header_bar.pack_start(self.new_tab_button)
         self.header_bar.pack_start(self.bookmark_top_btn)
         self.header_bar.pack_end(self.zim_menu_button)
+        self.header_bar.pack_end(self.downloads_button)
 
     def _build_options_menu(self):
         popover_box = Gtk.Box(
@@ -263,6 +278,29 @@ class WebArchivesWindow(Adw.ApplicationWindow):
 
     def on_new_tab_clicked(self, button):
         self.add_new_tab()
+
+    def on_downloads_clicked(self, button):
+        self.show_downloads()
+
+    def show_downloads(self):
+        dialog = DownloadsDialog()
+        dialog.present(self)
+
+    def _on_downloads_changed(self, manager, download_id):
+        self._update_downloads_indicator()
+
+    def _update_downloads_indicator(self):
+        active_statuses = (STATUS_QUEUED, STATUS_DOWNLOADING, STATUS_PAUSED)
+        active_count = sum(
+            1 for rec in self.download_manager.list_downloads()
+            if rec.get("status") in active_statuses
+        )
+        if active_count:
+            self.downloads_button.set_tooltip_text(f"Downloads ({active_count} active)")
+            self.downloads_button.add_css_class("accent")
+        else:
+            self.downloads_button.set_tooltip_text("Downloads")
+            self.downloads_button.remove_css_class("accent")
 
     def close_current_tab(self):
         current_page = self.tab_view.get_selected_page()

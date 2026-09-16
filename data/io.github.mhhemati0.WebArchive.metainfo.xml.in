@@ -4,13 +4,13 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
 
-  <name>WebArchive</name>
-  <summary>Browse offline ZIM archives</summary>
+  <name>Web Archive</name>
+  <summary>Browse Websites Offline!</summary>
   <description>
     <p>
-      WebArchive is a desktop reader for ZIM archives, the offline format
-      used to package entire websites — such as Wikipedia, Wiktionary, and
-      Stack Exchange — for reading without an internet connection.
+      Web Archive lets you read websites offline.
+      Open downloaded ZIM archives of websites like Wikipedia, Wiktionary, and Stack Exchange, search their contents, and browse them without an internet connection.
+      You can also find and download new archives from the Kiwix library.
     </p>
     <p>
       Browse the contents of your ZIM files, search inside them, and open
@@ -23,7 +23,10 @@
   <developer id="io.github.mhhemati0">
     <name>mhhemati0</name>
   </developer>
-
+    <branding>
+    <color type="primary" scheme_preference="light">#3584E4</color>
+    <color type="primary" scheme_preference="dark">#1C71D8</color>
+  </branding>
   <url type="homepage">https://github.com/mhhemati0/WebArchive</url>
   <url type="bugtracker">https://github.com/mhhemati0/WebArchive/issues</url>
 
@@ -45,9 +48,13 @@
       <image>https://raw.githubusercontent.com/mhhemati0/WebArchive/main/data/screenshots/img3.png</image>
     </screenshot>
   </screenshots>
-
   <releases>
-    <release version="1.2.2" date="2026-07-31">
+    <release version="1.2.3" date="2026-09-16">
+      <description translate="no">
+        <p>Fix : Some files in kiwix library not working.</p>
+      </description>
+    </release>
+    <release version="1.2.2" date="2026-09-14">
       <description translate="no">
         <p>The app is now mobile ready and optimized for small screens.</p>
       </description>

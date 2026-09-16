@@ -8,6 +8,8 @@ from .state import (
     write_persisted_state,
     save_state,
 )
+from .downloads import DownloadManager
+from .welcome import maybe_show_welcome
 from .window import WebArchivesWindow
 
 class WebArchivesApp(Adw.Application):
@@ -19,19 +21,27 @@ class WebArchivesApp(Adw.Application):
 
     def do_activate(self):
         win = self.get_active_window()
+        is_new_window = win is None
         if not win:
             win = WebArchivesWindow(application=self)
         win.present()
+        if is_new_window:
+            maybe_show_welcome(win)
 
     def do_startup(self):
         Adw.Application.do_startup(self)
         load_persisted_state()
         setup_zim_uri_scheme()
 
+        download_manager = DownloadManager.get()
+        download_manager.load()
+        download_manager.auto_resume_all()
+
         self.create_action("new-tab", self.on_new_tab, ["<Ctrl>t"])
         self.create_action("quit", self.on_quit, ["<Ctrl>q"])
         self.create_action("close-tab", self.on_close_tab, ["<Ctrl>w"])
         self.create_action("find-in-page", self.on_find_in_page, ["<Ctrl>f"])
+        self.create_action("downloads", self.on_downloads, ["<Ctrl>j"])
 
     def create_action(self, name, callback, shortcuts=None):
         action = Gio.SimpleAction.new(name, None)
@@ -49,6 +59,7 @@ class WebArchivesApp(Adw.Application):
         self.quit()
 
     def do_shutdown(self):
+        DownloadManager.get().shutdown()
         if save_state["scheduled"]:
             write_persisted_state()
         Adw.Application.do_shutdown(self)
@@ -62,5 +73,10 @@ class WebArchivesApp(Adw.Application):
         win = self.get_active_window()
         if win:
             win.show_find_in_page()
+
+    def on_downloads(self, action, param):
+        win = self.get_active_window()
+        if win:
+            win.show_downloads()
 
 

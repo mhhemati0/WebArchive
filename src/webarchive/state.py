@@ -26,7 +26,10 @@ LIBRARY_FOLDER = None
 
 _APP_DATA_DIR = Path(GLib.get_user_data_dir()) / "io.github.mhhemati0.WebArchive"
 _APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+APP_DATA_DIR = _APP_DATA_DIR
 STATE_FILE = _APP_DATA_DIR / "library-state.json"
+
+SHOW_WELCOME = True
 
 _ICON_CACHE_DIR = Path(GLib.get_user_cache_dir()) / "io.github.mhhemati0.WebArchive" / "icons"
 _ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -40,8 +43,6 @@ def _icon_cache_path(url):
 
 
 def get_cached_icon_bytes(url):
-    """Return previously-downloaded icon bytes for a Kiwix catalog url, or
-    None if we haven't cached anything for it yet."""
     if not url:
         return None
     try:
@@ -51,8 +52,6 @@ def get_cached_icon_bytes(url):
 
 
 def store_cached_icon_bytes(url, data):
-    """Persist downloaded icon bytes to disk so future searches can reuse
-    them instead of re-downloading from the Kiwix catalog."""
     if not url or not data:
         return
     cache_path = _icon_cache_path(url)
@@ -66,16 +65,6 @@ def store_cached_icon_bytes(url, data):
 
 
 def resolve_display_path(path):
-    """Return a user-friendly filesystem path for display purposes.
-
-    Under Flatpak (and other sandboxes that mediate folder access through
-    the XDG document portal), Gtk.FileDialog hands back paths like
-    /run/user/1000/doc/<id>/Videos instead of the real /home/user/Videos.
-    The portal exposes the real host path as an extended attribute on the
-    fuse file, so we read that here for anything shown to the user. The
-    original portal path is still what should be used for actual file I/O,
-    since that's what the sandbox actually grants access to.
-    """
     if not path:
         return path
     path_str = str(path)
@@ -109,6 +98,8 @@ def load_persisted_state():
         folder = payload.get("library_folder")
         if folder and Path(folder).is_dir():
             LIBRARY_FOLDER = folder
+        global SHOW_WELCOME
+        SHOW_WELCOME = bool(payload.get("show_welcome", True))
     except (OSError, json.JSONDecodeError, ValueError) as e:
         print(f"Could not load saved library state: {e}")
 
@@ -119,6 +110,7 @@ def write_persisted_state():
             "bookmarks": BOOKMARKS,
             "history": {zp: [[u, t] for u, t in entries] for zp, entries in HISTORY.items()},
             "library_folder": LIBRARY_FOLDER,
+            "show_welcome": SHOW_WELCOME,
         }
         tmp_file = STATE_FILE.with_suffix(".json.tmp")
         with open(tmp_file, "w", encoding="utf-8") as f:
@@ -206,6 +198,16 @@ def get_library_folder():
 def set_library_folder(path):
     global LIBRARY_FOLDER
     LIBRARY_FOLDER = path
+    schedule_state_save()
+
+
+def get_show_welcome():
+    return SHOW_WELCOME
+
+
+def set_show_welcome(value):
+    global SHOW_WELCOME
+    SHOW_WELCOME = bool(value)
     schedule_state_save()
 
 
@@ -309,12 +311,18 @@ def fetch_kiwix_catalog(query_text="", language="", category="", count=40):
             "size_bytes": None,
             "icon_url": None,
             "download_url": None,
+            "zim_id": None,
         }
 
         for field in child:
             tag = _xml_local_tag(field.tag)
             if tag == "title":
                 info["title"] = (field.text or "").strip() or "Untitled"
+            elif tag == "id":
+                raw_id = (field.text or "").strip()
+                if raw_id.startswith("urn:uuid:"):
+                    raw_id = raw_id[len("urn:uuid:"):]
+                info["zim_id"] = raw_id or None
             elif tag == "summary":
                 info["summary"] = (field.text or "").strip()
             elif tag == "language":
@@ -524,12 +532,20 @@ def _collect_zim_file_info(full_path):
         size_str = "Unknown size"
 
     title, gicon = get_zim_archive_metadata(str(full_path))
+
+    zim_id = None
+    try:
+        zim_id = str(Archive(str(full_path)).uuid)
+    except Exception:
+        zim_id = None
+
     return {
         "name": full_path.name,
         "display_name": title,
         "path": str(full_path),
         "size": size_str,
         "gicon": gicon,
+        "id": zim_id,
     }
 
 def scan_library_folder(callback):

@@ -12,6 +12,7 @@ from .state import (
     resolve_display_path,
 )
 from .kiwix_lib import KiwixLibraryDialog
+from .downloads import DownloadManager
 
 class HomePageView(Gtk.ScrolledWindow):
     __gsignals__ = {
@@ -158,7 +159,11 @@ class HomePageView(Gtk.ScrolledWindow):
         self._clear_file_rows()
 
         if zim_files:
+            manager = DownloadManager.get()
             for zim in zim_files:
+                if zim.get("id"):
+                    manager.register_local_zim(zim["id"], zim["path"])
+
                 row = Adw.ActionRow(title=zim["display_name"], subtitle=zim["size"])
 
                 gicon = zim.get("gicon")

@@ -1,5 +1,4 @@
-import os
-import time
+import hashlib
 import threading
 import urllib.request
 from pathlib import Path
@@ -17,14 +16,18 @@ from .state import (
     format_byte_size,
     get_library_folder,
     set_library_folder,
-    describe_download_error,
     resolve_display_path,
     get_cached_icon_bytes,
     store_cached_icon_bytes,
 )
-
-# In-process cache so icons already fetched this session are applied
-# instantly, without even touching the on-disk cache.
+from .downloads import (
+    DownloadManager,
+    STATUS_QUEUED,
+    STATUS_DOWNLOADING,
+    STATUS_PAUSED,
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+)
 _ICON_MEMORY_CACHE = {}
 
 class KiwixLibraryDialog(Adw.Dialog):
@@ -148,6 +151,21 @@ class KiwixLibraryDialog(Adw.Dialog):
         toolbar_view.set_content(root_box)
         self.set_child(toolbar_view)
 
+        self.download_manager = DownloadManager.get()
+        self._card_manager_signals = []
+        self.connect("closed", self._on_dialog_closed)
+
+    def _on_dialog_closed(self, *_args):
+        self._disconnect_card_signals()
+
+    def _disconnect_card_signals(self):
+        for signal_id in self._card_manager_signals:
+            try:
+                self.download_manager.disconnect(signal_id)
+            except Exception:
+                pass
+        self._card_manager_signals = []
+
     def _on_key_pressed(self, controller, keyval, keycode, state):
         if keyval == Gdk.KEY_Escape:
             self.close()
@@ -186,6 +204,8 @@ class KiwixLibraryDialog(Adw.Dialog):
         self.stack.set_visible_child_name("error")
 
     def _on_search_results(self, entries):
+        self._disconnect_card_signals()
+
         child = self.flow_box.get_first_child()
         while child is not None:
             next_child = child.get_next_sibling()
@@ -278,10 +298,16 @@ class KiwixLibraryDialog(Adw.Dialog):
         download_url = entry.get("download_url")
         if download_url:
             filename = download_url.split("/")[-1]
+            # Prefer the ID the Kiwix catalog reports for this book; fall
+            # back to a hash of the download URL so every entry still has
+            # a stable, non-name-based identifier to dedupe on.
+            zim_id = entry.get("zim_id") or (
+                "url:" + hashlib.sha256(download_url.encode("utf-8")).hexdigest()
+            )
 
             progress_bar = Gtk.ProgressBar()
             progress_bar.set_hexpand(True)
-            progress_bar.set_show_text(False)
+            progress_bar.set_show_text(True)
             progress_bar.set_visible(False)
             inner.append(progress_bar)
 
@@ -290,99 +316,93 @@ class KiwixLibraryDialog(Adw.Dialog):
             download_btn.add_css_class("circular")
             download_btn.set_halign(Gtk.Align.CENTER)
             download_btn.set_tooltip_text("Download ZIM file…")
+            inner.append(download_btn)
 
-            def start_download(url, target_path):
-                download_btn.set_sensitive(False)
-                download_btn.set_tooltip_text("Connecting…")
-                progress_bar.set_visible(True)
-                progress_bar.set_fraction(0.0)
-                progress_bar.set_text("Connecting…")
+            state = {"download_id": None}
 
-                pulse_state = {"source_id": GLib.timeout_add(100, lambda: progress_bar.pulse())}
+            def refresh_button():
+                rec = (
+                    self.download_manager.get_download(state["download_id"])
+                    if state["download_id"] else None
+                )
 
-                def stop_connecting_pulse():
-                    if pulse_state["source_id"] is not None:
-                        GLib.source_remove(pulse_state["source_id"])
-                        pulse_state["source_id"] = None
-                    return False
+                if rec is None:
+                    done_path = self.download_manager.completed_path_for(zim_id)
+                    if done_path:
+                        progress_bar.set_visible(False)
+                        download_btn.set_icon_name("checkbox-checked-symbolic")
+                        download_btn.set_sensitive(False)
+                        download_btn.set_tooltip_text(
+                            f"Already in your library ({resolve_display_path(done_path)})"
+                        )
+                    else:
+                        progress_bar.set_visible(False)
+                        download_btn.set_icon_name("folder-download-symbolic")
+                        download_btn.set_sensitive(True)
+                        download_btn.set_tooltip_text("Download ZIM file…")
+                    return
 
-                def update_progress(downloaded, total):
-                    stop_connecting_pulse()
-                    if total > 0:
-                        fraction = min(downloaded / total, 1.0)
+                status = rec.get("status")
+                downloaded = rec.get("downloaded_bytes") or 0
+                total = rec.get("total_bytes")
+                fraction = min(downloaded / total, 1.0) if total else 0.0
+
+                if status in (STATUS_QUEUED, STATUS_DOWNLOADING):
+                    progress_bar.set_visible(True)
+                    if total:
                         progress_bar.set_fraction(fraction)
                         progress_bar.set_text(f"{int(fraction * 100)}%")
                     else:
-                        progress_bar.pulse()
-                    return False
+                        progress_bar.set_fraction(0.0)
+                        progress_bar.set_text("Connecting…" if downloaded == 0 else format_byte_size(downloaded))
+                    download_btn.set_icon_name("media-playback-pause-symbolic")
+                    download_btn.set_sensitive(True)
+                    download_btn.set_tooltip_text("Pause download")
+                elif status == STATUS_PAUSED:
+                    progress_bar.set_visible(True)
+                    progress_bar.set_fraction(fraction)
+                    progress_bar.set_text("Paused")
+                    download_btn.set_icon_name("media-playback-start-symbolic")
+                    download_btn.set_sensitive(True)
+                    download_btn.set_tooltip_text("Resume download")
+                elif status == STATUS_COMPLETED:
+                    progress_bar.set_visible(False)
+                    download_btn.set_icon_name("checkbox-checked-symbolic")
+                    download_btn.set_sensitive(False)
+                    download_btn.set_tooltip_text(
+                        f"Saved to {resolve_display_path(rec.get('target_path', ''))}"
+                    )
+                elif status == STATUS_FAILED:
+                    progress_bar.set_visible(True)
+                    progress_bar.set_fraction(0.0)
+                    progress_bar.set_text("Failed — click to retry")
+                    download_btn.set_icon_name("view-refresh-symbolic")
+                    download_btn.set_sensitive(True)
+                    download_btn.set_tooltip_text(f"Download failed: {rec.get('error')}")
 
-                def download_finished(success, message=""):
-                    stop_connecting_pulse()
-                    if success:
-                        progress_bar.set_fraction(1.0)
-                        progress_bar.set_text("Downloaded")
-                        download_btn.set_icon_name("checkbox-checked-symbolic")
-                        download_btn.set_sensitive(False)
-                        download_btn.set_tooltip_text(f"Saved to {resolve_display_path(target_path)}")
-                    else:
-                        progress_bar.set_text("Failed — click to retry")
-                        download_btn.set_sensitive(True)
-                        download_btn.set_tooltip_text(f"Download failed: {message}")
-                        self._show_error_popup(
-                            "Download Failed",
-                            f"Couldn't download \"{entry.get('title', 'this file')}\".\n\n{message}",
-                        )
-                    return False
+            def on_manager_changed(manager, changed_id):
+                if changed_id == state["download_id"]:
+                    refresh_button()
 
-                def download_worker():
-                    tmp_path = target_path.with_name(target_path.name + ".part")
-                    try:
-                        req = urllib.request.Request(
-                            url, headers={"User-Agent": "WebArchivesGtk/1.0"}
-                        )
-                        with urllib.request.urlopen(req, timeout=30) as resp:
-                            GLib.idle_add(stop_connecting_pulse)
-                            content_len = resp.headers.get("Content-Length")
-                            server_size = int(content_len) if content_len else None
-                            total_size = server_size or entry.get("size_bytes") or 0
+            signal_id = self.download_manager.connect("download-changed", on_manager_changed)
+            self._card_manager_signals.append(signal_id)
 
-                            downloaded = 0
-                            block_size = 262144
-                            last_ui_update = 0.0
+            def begin(target_path, url=download_url, title=entry.get("title", filename)):
+                result = self.download_manager.start_download(
+                    zim_id=zim_id,
+                    title=title,
+                    url=url,
+                    target_path=target_path,
+                    total_bytes=entry.get("size_bytes"),
+                )
+                if result["status"] == "already_downloaded":
+                    state["download_id"] = None
+                    refresh_button()
+                    return
+                state["download_id"] = result["id"]
+                refresh_button()
 
-                            with open(tmp_path, "wb") as f:
-                                while True:
-                                    buffer = resp.read(block_size)
-                                    if not buffer:
-                                        break
-                                    downloaded += len(buffer)
-                                    f.write(buffer)
-                                    now = time.monotonic()
-                                    if now - last_ui_update > 0.2:
-                                        last_ui_update = now
-                                        GLib.idle_add(update_progress, downloaded, total_size)
-
-                        if downloaded == 0:
-                            raise IOError("Downloaded file is empty.")
-
-                        if server_size and downloaded < server_size:
-                            raise IOError(
-                                f"Incomplete download: got {downloaded} of {server_size} bytes"
-                            )
-
-                        os.replace(tmp_path, target_path)
-                        GLib.idle_add(update_progress, downloaded, downloaded or total_size)
-                        GLib.idle_add(download_finished, True)
-                    except Exception as e:
-                        try:
-                            tmp_path.unlink(missing_ok=True)
-                        except OSError:
-                            pass
-                        GLib.idle_add(download_finished, False, describe_download_error(e))
-
-                threading.Thread(target=download_worker, daemon=True).start()
-
-            def on_folder_chosen_for_download(dialog, result, url=download_url, suggested_name=filename):
+            def on_folder_chosen_for_download(dialog, result, suggested_name=filename):
                 try:
                     gfile = dialog.select_folder_finish(result)
                 except GLib.Error as e:
@@ -399,20 +419,39 @@ class KiwixLibraryDialog(Adw.Dialog):
                     return
 
                 set_library_folder(folder_path)
-                start_download(url, Path(folder_path) / suggested_name)
+                begin(Path(folder_path) / suggested_name)
 
-            def begin_download(btn, url=download_url, suggested_name=filename):
-                folder = get_library_folder()
-                if folder:
-                    start_download(url, Path(folder) / suggested_name)
+            def on_download_btn_clicked(btn, suggested_name=filename):
+                rec = (
+                    self.download_manager.get_download(state["download_id"])
+                    if state["download_id"] else None
+                )
+
+                if rec is None:
+                    done_path = self.download_manager.completed_path_for(zim_id)
+                    if done_path:
+                        return
+                    folder = get_library_folder()
+                    if folder:
+                        begin(Path(folder) / suggested_name)
+                    else:
+                        folder_dialog = Gtk.FileDialog()
+                        folder_dialog.set_title("Choose a ZIMs Folder")
+                        folder_dialog.select_folder(self.get_root(), None, on_folder_chosen_for_download)
                     return
 
-                folder_dialog = Gtk.FileDialog()
-                folder_dialog.set_title("Choose a ZIMs Folder")
-                folder_dialog.select_folder(self.get_root(), None, on_folder_chosen_for_download)
+                status = rec.get("status")
+                if status in (STATUS_QUEUED, STATUS_DOWNLOADING):
+                    self.download_manager.pause_download(state["download_id"])
+                elif status in (STATUS_PAUSED, STATUS_FAILED):
+                    self.download_manager.resume_download(state["download_id"])
 
-            download_btn.connect("clicked", begin_download)
-            inner.append(download_btn)
+            download_btn.connect("clicked", on_download_btn_clicked)
+
+            existing_rec = self.download_manager.find_by_zim_id(zim_id)
+            if existing_rec:
+                state["download_id"] = existing_rec["id"]
+            refresh_button()
 
         icon_url = entry.get("icon_url")
         if icon_url:
@@ -420,7 +459,6 @@ class KiwixLibraryDialog(Adw.Dialog):
         return card
 
     def _load_card_icon(self, url, image_widget):
-        # Fastest path: already fetched this session, apply immediately.
         cached = _ICON_MEMORY_CACHE.get(url)
         if cached is not None:
             self._apply_card_icon(image_widget, cached)
