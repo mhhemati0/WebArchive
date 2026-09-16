@@ -31,7 +31,7 @@ from .downloads_ui import DownloadsDialog
 class WebArchivesWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.set_default_size(800, 600)
+        self.set_default_size(1024, 768)
 
         self.set_size_request(360, 480)
         self.set_title("Web Archives")
