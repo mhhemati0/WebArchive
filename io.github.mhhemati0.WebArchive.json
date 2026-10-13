@@ -1,7 +1,7 @@
 {
     "id": "io.github.mhhemati0.WebArchive",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "50",
+    "runtime-version": "51",
     "sdk": "org.gnome.Sdk",
     "command": "webarchive",
     "finish-args": [
@@ -21,7 +21,7 @@
                 {
                     "type": "git",
                     "url": "https://github.com/mhhemati0/WebArchive.git",
-                    "tag": "v1.2.3",
+                    "tag": "v1.2.4",
                     "commit": "e95d15f1df7e1a0241a9f6fe5acdd5befd282f05"
                 }
             ]

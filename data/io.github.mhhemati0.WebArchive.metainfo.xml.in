@@ -49,6 +49,15 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.2.4" date="2026-10-13">
+      <description translate="no">
+        <p>Updated Runtimes :</p>
+        <ul>
+          <li>GNOME 51 Platform</li>
+          <li>libzim updated to 3.13.1</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.3" date="2026-09-17">
       <description translate="no">
         <p>This update introduces :</p>
